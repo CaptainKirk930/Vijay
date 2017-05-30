@@ -16,6 +16,19 @@ LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  // Set the LCD I
 #define Button1 18
 #define Button2 19
 
+#define analogPinIn0 A8
+#define analogPinIn1 A9
+
+int analogReading0;
+int analogReading1;
+
+//Analog Signals
+// 0     - signal find mode
+// 250   - bad
+// 500   - sorta bad
+// 750   - ok
+// 1000  - good
+
 unsigned long yesVote = 0;
 unsigned long noVote = 0;
 int ID = 0;
@@ -25,6 +38,7 @@ int noteTotal = 0;
 
 bool button1Flag = 0;
 bool button2Flag = 0;
+bool signalButtonFlag = 0;
 
 byte buttonCount1 = 0;
 byte buttonCount2 = 0;
@@ -60,7 +74,7 @@ SoftwareSerial VS1053_MIDI(0, 2); // TX only, do not use the 'rx' side
 void setup()
 {
   Serial.begin(9600);
-  lcd.begin(20, 4);        // initialize the lcd for 20 chars 4 lines 
+  lcd.begin(20, 4);        // initialize the lcd for 20 chars 4 lines
 
   FastLED.addLeds<NEOPIXEL, PIN>(strip, numLEDS);
 
@@ -68,15 +82,10 @@ void setup()
 
   pinMode(Button1, INPUT_PULLUP);
   pinMode(Button2, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(Button1), button1_ISR, LOW);
-  attachInterrupt(digitalPinToInterrupt(Button2), button2_ISR, LOW);
+  attachInterrupt(digitalPinToInterrupt(Button1), button1_ISR, FALLING);
+  attachInterrupt(digitalPinToInterrupt(Button2), button2_ISR, FALLING);
   FastLED.setBrightness(255);
   randomSeed(analogRead(A1));
-  ID = random(0, 4000);
-  Serial.println(ID);
-  //checkStatus();
-  //setUpCom();
-  //stoper=false;
 
   midiSetChannelBank(0, VS1053_BANK_MELODY);
   midiSetInstrument(0, VS1053_GM1_OCARINA);
@@ -84,6 +93,13 @@ void setup()
 }
 
 void loop() {
+  analogReading1 = analogRead(analogPinIn1);
+  if (analogReading1 == 0)
+  {
+    signalFindMode();
+  }
+
+  lcd.clear();
   lcd.setCursor(0, 0); //Start at character 4 on line 0
   lcd.print("    Please Push");
   lcd.setCursor(0, 1); //Start at character 4 on line 0
@@ -91,6 +107,7 @@ void loop() {
   counter = counter + 1;
   counter = counter % 2;
   colorPick();
+
   if (button1Flag == 0 && button2Flag == 0)
   {
     if (counter % 2 == 0)
@@ -111,21 +128,23 @@ void loop() {
 
 void button1_ISR()
 {
-  if(button2Interrupt == 0)
+
+  if (button2Interrupt == 0)
   {
-      button1Flag = 1;
-      button1Interrupt = 1;
+    button1Flag = 1;
+    button1Interrupt = 1;
+    signalButtonFlag = 1;
   }
 }
 
-  void button2_ISR()
+void button2_ISR()
+{
+  if (button1Interrupt == 0)
   {
-    if(button1Interrupt == 0)
-    {
-        button2Flag = 1;
-        button2Interrupt = 1;
-    }
+    button2Flag = 1;
+    button2Interrupt = 1;
   }
+}
 
 
 void thankYou()
@@ -139,19 +158,19 @@ void thankYou()
     {
       for (int i = 0; i < 200; i++)
       {
-        bpm();
+        bpm1();
         EVERY_N_MILLISECONDS( 20 ) {
           gHue++;  // slowly cycle the "base color" through the rainbow
         }
         FastLED.show();
-        if(i % 10 == 0)
-        { 
+        if (i % 10 == 0)
+        {
           midiNoteOn(0, 60 + noteTotal, 127);
-         
+
           midiNoteOff(0, (60 - noteCount ) + noteTotal, 127);
           noteTotal += noteCount;
 
-          if(noteTotal == noteCount * 20)
+          if (noteTotal == noteCount * 20)
           {
             noteTotal = 0;
             midiNoteOff(0, 60 + noteTotal - noteCount, 127);
@@ -163,18 +182,18 @@ void thankYou()
     {
       for (int i = 0; i < 200; i++)
       {
-        bpm();
+        bpm2();
         EVERY_N_MILLISECONDS( 20 ) {
           gHue++;  // slowly cycle the "base color" through the rainbow
         }
         FastLED.show();
-        if(i % 10 == 0)
-        { 
+        if (i % 10 == 0)
+        {
           midiNoteOn(0, 60 + (noteCount * 19) - noteTotal, 127);
-         
-          midiNoteOff(0, 60 + (noteCount *18) - noteTotal, 127);
+
+          midiNoteOff(0, 60 + (noteCount * 18) - noteTotal, 127);
           noteTotal += noteCount;
-          if(noteTotal == noteCount * 20)
+          if (noteTotal == noteCount * 20)
           {
             noteTotal = 0;
             midiNoteOff(0, 60, 127);
@@ -197,13 +216,24 @@ byte colorPick()
 
 }
 
-void bpm()
+void bpm1()
 {
   // colored stripes pulsing at a defined Beats-Per-Minute (BPM)
   uint8_t BeatsPerMinute = 120;
   CRGBPalette16 palette = PartyColors_p;
   uint8_t beat = beatsin8( BeatsPerMinute, 64, 255);
-  for ( int i = 0; i < numLEDS; i++) { //9948
+  for ( int i = 0; i < numLEDS / 2; i++) { //9948
+    strip[i] = ColorFromPalette(palette, gHue + (i * 2), beat - gHue + (i * 10));
+  }
+}
+
+void bpm2()
+{
+  // colored stripes pulsing at a defined Beats-Per-Minute (BPM)
+  uint8_t BeatsPerMinute = 120;
+  CRGBPalette16 palette = PartyColors_p;
+  uint8_t beat = beatsin8( BeatsPerMinute, 64, 255);
+  for ( int i = numLEDS / 2; i < numLEDS; i++) { //9948
     strip[i] = ColorFromPalette(palette, gHue + (i * 2), beat - gHue + (i * 10));
   }
 }
@@ -237,6 +267,10 @@ void outwardTheaterChase(uint8_t wait) {
   Serial.print("RAND INT : ");
   Serial.println(gHue);
   for (int j = 0; j < 10; j++) { //do 10 cycles of chasing
+    if (button1Interrupt == 1 || button2Interrupt == 1)
+    {
+      break;
+    }
     for (int q = 0; q < 3; q++) {
       for (int i = 0; i < numLEDS / 2; i = i + 3) {
         strip[i + q] = ColorFromPalette(palette, gHue, 255);  //turn every third pixel on
@@ -261,6 +295,10 @@ void outwardTheaterChase(uint8_t wait) {
 void inwardTheaterChase( uint8_t wait) {
   CRGBPalette16 palette = PartyColors_p;
   for (int j = 0; j < 10; j++) { //do 10 cycles of chasing
+    if (button1Interrupt == 1 || button2Interrupt == 1)
+    {
+      break;
+    }
     for (int q = 0; q < 3; q++) {
       for (uint16_t i = numLEDS / 2; i < numLEDS; i = i + 3) {
         strip[i + q] = ColorFromPalette(palette, gHue, 255);  //turn every third pixel on
@@ -331,5 +369,67 @@ void midiNoteOff(uint8_t chan, uint8_t n, uint8_t vel) {
   VS1053_MIDI.write(MIDI_NOTE_OFF | chan);
   VS1053_MIDI.write(n);
   VS1053_MIDI.write(vel);
+}
+
+
+void signalFindMode()
+{
+  analogReading0 = analogRead(analogPinIn0);
+  analogReading1 = analogRead(analogPinIn1);
+  if (analogReading0 < 100 && analogReading1 < 100)
+  {
+    signalButtonFlag = 0;
+  }
+  Serial.println(signalButtonFlag);
+  Serial.println(analogReading0);
+  Serial.println(analogReading1);
+  while (signalButtonFlag == 0)
+  {
+    analogReading0 = analogRead(analogPinIn0);
+    analogReading1 = analogRead(analogPinIn1);
+    if (analogReading0 < 100 && analogReading1 < 100)
+    {
+      lcd.clear();
+      lcd.setCursor(0, 0); //Start at character 4 on line 0
+      lcd.print("    Singal Strength");
+      lcd.setCursor(0, 1); //Start at character 4 on line 0
+      lcd.print("     Very Bad");
+      delay(1500);
+    }
+
+    if (analogReading0 > 100 && analogReading1 < 100)
+    {
+      lcd.clear();
+      lcd.setCursor(0, 0); //Start at character 4 on line 0
+      lcd.print("    Singal Strength");
+      lcd.setCursor(0, 1); //Start at character 4 on line 0
+      lcd.print("      Bad");
+      delay(1500);
+    }
+
+    if (analogReading0 < 100 && analogReading1 > 100)
+    {
+      lcd.clear();
+      lcd.setCursor(0, 0); //Start at character 4 on line 0
+      lcd.print("    Singal Strength");
+      lcd.setCursor(0, 1); //Start at character 4 on line 0
+      lcd.print("     OK");
+      delay(1500);
+    }
+
+    if (analogReading0 > 100 && analogReading1 > 100)
+    {
+      lcd.clear();
+      lcd.setCursor(0, 0); //Start at character 4 on line 0
+      lcd.print("    Singal Strength");
+      lcd.setCursor(0, 1); //Start at character 4 on line 0
+      lcd.print("     Good");
+      delay(1500);
+    }
+
+
+  }
+  delay(1500);
+  signalButtonFlag = 0;
 }
 
